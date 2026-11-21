@@ -132,6 +132,25 @@ class FlowClient:
             status = self._post("status", {"detailed": False})
         return status
 
+    def ensure_active_project(self, title: str = "Recreation Pipeline") -> None:
+        """Ensures that Google Flow is signed in and has an active project open in the grid."""
+        try:
+            status = self._post("status", {"detailed": False})
+            flow_info = status.get("flow", {})
+            if not flow_info.get("signedIn"):
+                raise RuntimeError(
+                    "Not signed in to Google Flow! Please open Chrome and log in to Google Flow."
+                )
+            if not flow_info.get("inProject"):
+                logger.info(f"No active Flow project open. Initializing project '{title}'...")
+                self.create_project(title)
+        except Exception as e:
+            logger.warning(f"Flow status check encountered: {e}. Ensuring new project '{title}'...")
+            try:
+                self.create_project(title)
+            except Exception as e2:
+                logger.warning(f"Could not initialize project: {e2}")
+
     def create_project(self, title: str = "Recreation Pipeline") -> str:
         """Creates a new project in Flow and waits for it to open."""
         res = self._post("new_project", {"title": title})
@@ -209,16 +228,34 @@ class FlowClient:
             "scenes": [scene_spec],
         }
 
+        self.ensure_active_project(title=project_name)
+
         logger.info(f"Queueing image generation with model '{model}'...")
         start_time = time.time()
-        res = self._post("generate", payload)
-        jobs = res.get("jobs", [])
-        if not jobs:
-            raise RuntimeError(f"No jobs returned from flow_generate: {res}")
-
-        job_id = jobs[0]["id"]
-        logger.info(f"Queued image job: {job_id}. Waiting for completion...")
-        wait_res = self.wait_for_jobs(job_ids=[job_id], timeout_seconds=300)
+        try:
+            res = self._post("generate", payload)
+            jobs = res.get("jobs", [])
+            if not jobs:
+                raise RuntimeError(f"No jobs returned from flow_generate: {res}")
+            job_id = jobs[0]["id"]
+            logger.info(f"Queued image job: {job_id}. Waiting for completion...")
+            wait_res = self.wait_for_jobs(job_ids=[job_id], timeout_seconds=300)
+        except RuntimeError as e:
+            err_str = str(e).lower()
+            if "disabled" in err_str or "no project is open" in err_str or "target page" in err_str:
+                logger.warning(f"Flow image generation encountered transient issue: {e}. Reinitializing project '{project_name}' and retrying...")
+                self.create_project(title=project_name)
+                time.sleep(3.0)
+                start_time = time.time()
+                res = self._post("generate", payload)
+                jobs = res.get("jobs", [])
+                if not jobs:
+                    raise RuntimeError(f"No jobs returned from flow_generate on retry: {res}")
+                job_id = jobs[0]["id"]
+                logger.info(f"Queued retry image job: {job_id}. Waiting for completion...")
+                wait_res = self.wait_for_jobs(job_ids=[job_id], timeout_seconds=300)
+            else:
+                raise
 
         # Locate the resulting file using robust resolver
         job_files = []
@@ -279,18 +316,36 @@ class FlowClient:
             "scenes": [scene_spec],
         }
 
+        self.ensure_active_project(title=project_name)
+
         logger.info(
             f"Queueing video generation with model '{model}' (duration: {duration}s, upscaled)..."
         )
         start_time = time.time()
-        res = self._post("generate", payload)
-        jobs = res.get("jobs", [])
-        if not jobs:
-            raise RuntimeError(f"No jobs returned from flow_generate: {res}")
-
-        job_id = jobs[0]["id"]
-        logger.info(f"Queued video job: {job_id}. Waiting for completion...")
-        wait_res = self.wait_for_jobs(job_ids=[job_id], timeout_seconds=600)
+        try:
+            res = self._post("generate", payload)
+            jobs = res.get("jobs", [])
+            if not jobs:
+                raise RuntimeError(f"No jobs returned from flow_generate: {res}")
+            job_id = jobs[0]["id"]
+            logger.info(f"Queued video job: {job_id}. Waiting for completion...")
+            wait_res = self.wait_for_jobs(job_ids=[job_id], timeout_seconds=600)
+        except RuntimeError as e:
+            err_str = str(e).lower()
+            if "disabled" in err_str or "no project is open" in err_str or "target page" in err_str:
+                logger.warning(f"Flow video generation encountered transient issue: {e}. Reinitializing project '{project_name}' and retrying...")
+                self.create_project(title=project_name)
+                time.sleep(3.0)
+                start_time = time.time()
+                res = self._post("generate", payload)
+                jobs = res.get("jobs", [])
+                if not jobs:
+                    raise RuntimeError(f"No jobs returned from flow_generate on retry: {res}")
+                job_id = jobs[0]["id"]
+                logger.info(f"Queued retry video job: {job_id}. Waiting for completion...")
+                wait_res = self.wait_for_jobs(job_ids=[job_id], timeout_seconds=600)
+            else:
+                raise
 
         job_files = []
         for j in wait_res.get("jobs", []):
@@ -359,6 +414,10 @@ def run_stage_4(
     completed_scenes = state.setdefault("scenes", {})
 
     total_scenes = len(prompts_list)
+
+    # Verify Flow session and ensure active project in grid before scene loop
+    logger.info("Connecting to Google Flow and ensuring active project...")
+    client.ensure_active_project(title=f"Recreation_{job_id}")
 
     for i, scene in enumerate(prompts_list, start=1):
         scene_id = scene["scene_id"]
