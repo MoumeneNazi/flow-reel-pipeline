@@ -27,15 +27,80 @@ def clean_stutters(text: str) -> str:
     return " ".join(cleaned.split()).strip()
 
 
+def partition_dialogue_across_scenes(
+    transcript_data: dict,
+    scenes_data: list[dict],
+) -> list[str]:
+    """
+    Partitions words from transcript_data strictly and disjointly across scenes.
+    Ensures ZERO word overlap between consecutive scenes (e.g. no repeating words
+    like 'one cup' across scene boundaries).
+    """
+    all_words = []
+    for seg in transcript_data.get("segments", []):
+        words = seg.get("words", [])
+        if words:
+            for w in words:
+                text = w.get("word", "").strip()
+                if text:
+                    w_start = float(w.get("start", 0.0))
+                    w_end = float(w.get("end", w_start))
+                    mid = (w_start + w_end) / 2.0
+                    all_words.append((mid, text))
+        else:
+            seg_text = seg.get("text", "").strip()
+            if seg_text:
+                s_start = float(seg.get("start", 0.0))
+                s_end = float(seg.get("end", s_start))
+                mid = (s_start + s_end) / 2.0
+                all_words.append((mid, seg_text))
+
+    if not scenes_data:
+        return []
+
+    num_scenes = len(scenes_data)
+    scene_words: list[list[str]] = [[] for _ in range(num_scenes)]
+
+    for mid, word in all_words:
+        assigned = False
+        for idx, sc in enumerate(scenes_data):
+            start_t = float(sc.get("start_time", 0.0))
+            end_t = float(sc.get("end_time", 0.0))
+            # First scene gets anything before its end
+            if idx == 0 and mid < end_t:
+                scene_words[idx].append(word)
+                assigned = True
+                break
+            # Last scene gets anything from its start onwards
+            elif idx == num_scenes - 1 and mid >= start_t:
+                scene_words[idx].append(word)
+                assigned = True
+                break
+            # Intermediate scenes get strictly [start_t, end_t)
+            elif start_t <= mid < end_t:
+                scene_words[idx].append(word)
+                assigned = True
+                break
+        if not assigned:
+            # Fallback: assign to nearest scene by midpoint
+            nearest_idx = min(
+                range(num_scenes),
+                key=lambda i: abs(mid - ((float(scenes_data[i]["start_time"]) + float(scenes_data[i]["end_time"])) / 2.0)),
+            )
+            scene_words[nearest_idx].append(word)
+
+    return [clean_stutters(" ".join(words)) for words in scene_words]
+
+
 def extract_dialogue_for_interval(
     transcript_data: dict,
     start_sec: float,
     end_sec: float,
-    buffer_sec: float = 0.25,
+    buffer_sec: float = 0.0,
 ) -> str:
     """
-    Extracts spoken words within [start_sec - buffer_sec, end_sec + buffer_sec]
-    from transcript.json word timestamps, cleaning stutters.
+    Extracts spoken words within [start_sec, end_sec) from transcript.json word timestamps,
+    using word midpoints to prevent boundary duplication.
     """
     matched_words = []
     window_start = max(0.0, start_sec - buffer_sec)
@@ -46,16 +111,16 @@ def extract_dialogue_for_interval(
         words = seg.get("words", [])
         if words:
             for w in words:
-                w_start = w.get("start", 0.0)
-                w_end = w.get("end", 0.0)
-                if (w_start >= window_start and w_start <= window_end) or (
-                    w_end >= window_start and w_end <= window_end
-                ):
+                w_start = float(w.get("start", 0.0))
+                w_end = float(w.get("end", w_start))
+                w_mid = (w_start + w_end) / 2.0
+                if window_start <= w_mid < window_end:
                     matched_words.append(w.get("word", "").strip())
         else:
-            seg_start = seg.get("start", 0.0)
-            seg_end = seg.get("end", 0.0)
-            if not (seg_end < window_start or seg_start > window_end):
+            seg_start = float(seg.get("start", 0.0))
+            seg_end = float(seg.get("end", seg_start))
+            seg_mid = (seg_start + seg_end) / 2.0
+            if window_start <= seg_mid < window_end:
                 matched_words.append(seg.get("text", "").strip())
 
     raw_dialogue = " ".join(filter(None, matched_words))
@@ -326,6 +391,7 @@ def map_scenes_to_prompts(
         transcript_data = json.load(f)
 
     total_scenes = len(scenes_data)
+    dialogues = partition_dialogue_across_scenes(transcript_data, scenes_data)
     prompts_list = []
 
     for idx, sc in enumerate(scenes_data, start=1):
@@ -333,7 +399,7 @@ def map_scenes_to_prompts(
         start_sec = sc["start_time"]
         end_sec = sc["end_time"]
         raw_duration = sc["duration"]
-        dialogue = extract_dialogue_for_interval(transcript_data, start_sec, end_sec)
+        dialogue = dialogues[idx - 1] if idx - 1 < len(dialogues) else ""
         screenshot = sc.get("screenshot_path")
 
         # Pick duration dynamically based on both scene length and dialogue content
