@@ -8,6 +8,7 @@ import json
 import logging
 import shutil
 import time
+import zipfile
 import requests
 
 from .config import (
@@ -21,6 +22,77 @@ from .config import (
 )
 
 logger = logging.getLogger("flow_reel.flow_client")
+
+
+def resolve_job_output_file(
+    proj_dir: Path,
+    job_id: str,
+    job_files: list[str],
+    job_start_time: float,
+    is_video: bool = False,
+) -> Path | None:
+    """
+    Resolves the exact generated file for a Flow job.
+    Handles Flow MCP multi-take ZIPs (scene-XX-takes.zip), unzips them if needed,
+    filters out uploaded reference images (fm-*), and selects the freshest output.
+    """
+    # 1. Check for any ZIP archives generated in the project dir (e.g. *-takes.zip)
+    if proj_dir.exists():
+        zips = sorted(proj_dir.glob("*.zip"), key=lambda p: p.stat().st_mtime, reverse=True)
+        for z_path in zips:
+            if z_path.stat().st_mtime >= (job_start_time - 15.0):
+                try:
+                    with zipfile.ZipFile(z_path, "r") as z:
+                        namelist = z.namelist()
+                        valid_names = [
+                            name
+                            for name in namelist
+                            if not name.startswith("fm-")
+                            and "-ref" not in name
+                            and "-start" not in name
+                            and not name.startswith("Recreation_job_")
+                            and (name.lower().endswith(".mp4") if is_video else name.lower().endswith((".jpg", ".jpeg", ".png")))
+                        ]
+                        if valid_names:
+                            target_entry = valid_names[0]
+                            extracted_path = proj_dir / f"extracted_{job_id}_{Path(target_entry).name}"
+                            with open(extracted_path, "wb") as f_out:
+                                f_out.write(z.read(target_entry))
+                            logger.info(f"Extracted generated file from {z_path.name}: {target_entry}")
+                            return extracted_path
+                except Exception as e:
+                    logger.warning(f"Error inspecting zip {z_path}: {e}")
+
+    # 2. Check candidate files returned by Flow MCP job status
+    for f_str in job_files:
+        p = Path(f_str)
+        if p.exists() and not p.name.startswith("fm-") and "-ref" not in p.name:
+            if p.stat().st_mtime >= (job_start_time - 15.0):
+                return p
+
+    # 3. Fallback: inspect directory for newest matching file
+    if proj_dir.exists():
+        exts = [".mp4"] if is_video else [".png", ".jpg", ".jpeg"]
+        candidates = [
+            p
+            for p in proj_dir.iterdir()
+            if p.is_file()
+            and p.suffix.lower() in exts
+            and not p.name.startswith("fm-")
+            and "-ref" not in p.name
+        ]
+        if candidates:
+            newest = sorted(candidates, key=lambda p: p.stat().st_mtime, reverse=True)[0]
+            if newest.stat().st_mtime >= (job_start_time - 30.0):
+                return newest
+
+    # 4. If nothing fresh, check any candidate in job_files that exists
+    for f_str in job_files:
+        p = Path(f_str)
+        if p.exists() and not p.name.startswith("fm-") and "-ref" not in p.name:
+            return p
+
+    return None
 
 
 class FlowClient:
@@ -138,6 +210,7 @@ class FlowClient:
         }
 
         logger.info(f"Queueing image generation with model '{model}'...")
+        start_time = time.time()
         res = self._post("generate", payload)
         jobs = res.get("jobs", [])
         if not jobs:
@@ -147,21 +220,21 @@ class FlowClient:
         logger.info(f"Queued image job: {job_id}. Waiting for completion...")
         wait_res = self.wait_for_jobs(job_ids=[job_id], timeout_seconds=300)
 
-        # Locate the resulting file
-        output_file = None
+        # Locate the resulting file using robust resolver
+        job_files = []
         for j in wait_res.get("jobs", []):
             if j.get("id") == job_id:
-                files = j.get("files", [])
-                if files:
-                    output_file = Path(files[0])
+                job_files = j.get("files", [])
                 break
 
-        if not output_file or not output_file.exists():
-            # Search in project output dir
-            proj_dir = FLOW_OUTPUT_ROOT / project_name
-            candidates = list(proj_dir.glob("*.png")) + list(proj_dir.glob("*.jpg"))
-            if candidates:
-                output_file = sorted(candidates, key=lambda p: p.stat().st_mtime, reverse=True)[0]
+        proj_dir = FLOW_OUTPUT_ROOT / project_name
+        output_file = resolve_job_output_file(
+            proj_dir=proj_dir,
+            job_id=job_id,
+            job_files=job_files,
+            job_start_time=start_time,
+            is_video=False,
+        )
 
         if not output_file or not output_file.exists():
             raise FileNotFoundError(f"Could not find generated image file for job {job_id}")
@@ -209,6 +282,7 @@ class FlowClient:
         logger.info(
             f"Queueing video generation with model '{model}' (duration: {duration}s, upscaled)..."
         )
+        start_time = time.time()
         res = self._post("generate", payload)
         jobs = res.get("jobs", [])
         if not jobs:
@@ -218,19 +292,20 @@ class FlowClient:
         logger.info(f"Queued video job: {job_id}. Waiting for completion...")
         wait_res = self.wait_for_jobs(job_ids=[job_id], timeout_seconds=600)
 
-        output_file = None
+        job_files = []
         for j in wait_res.get("jobs", []):
             if j.get("id") == job_id:
-                files = j.get("files", [])
-                if files:
-                    output_file = Path(files[0])
+                job_files = j.get("files", [])
                 break
 
-        if not output_file or not output_file.exists():
-            proj_dir = FLOW_OUTPUT_ROOT / project_name
-            candidates = list(proj_dir.glob("*.mp4"))
-            if candidates:
-                output_file = sorted(candidates, key=lambda p: p.stat().st_mtime, reverse=True)[0]
+        proj_dir = FLOW_OUTPUT_ROOT / project_name
+        output_file = resolve_job_output_file(
+            proj_dir=proj_dir,
+            job_id=job_id,
+            job_files=job_files,
+            job_start_time=start_time,
+            is_video=True,
+        )
 
         if not output_file or not output_file.exists():
             raise FileNotFoundError(f"Could not find generated video file for job {job_id}")
