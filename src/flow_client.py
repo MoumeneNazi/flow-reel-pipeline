@@ -231,31 +231,36 @@ class FlowClient:
         self.ensure_active_project(title=project_name)
 
         logger.info(f"Queueing image generation with model '{model}'...")
+        max_attempts = 3
+        wait_res = None
+        last_error = None
         start_time = time.time()
-        try:
-            res = self._post("generate", payload)
-            jobs = res.get("jobs", [])
-            if not jobs:
-                raise RuntimeError(f"No jobs returned from flow_generate: {res}")
-            job_id = jobs[0]["id"]
-            logger.info(f"Queued image job: {job_id}. Waiting for completion...")
-            wait_res = self.wait_for_jobs(job_ids=[job_id], timeout_seconds=300)
-        except RuntimeError as e:
-            err_str = str(e).lower()
-            if "disabled" in err_str or "no project is open" in err_str or "target page" in err_str:
-                logger.warning(f"Flow image generation encountered transient issue: {e}. Reinitializing project '{project_name}' and retrying...")
-                self.create_project(title=project_name)
-                time.sleep(3.0)
+
+        for attempt in range(1, max_attempts + 1):
+            try:
                 start_time = time.time()
                 res = self._post("generate", payload)
                 jobs = res.get("jobs", [])
                 if not jobs:
-                    raise RuntimeError(f"No jobs returned from flow_generate on retry: {res}")
+                    raise RuntimeError(f"No jobs returned from flow_generate: {res}")
                 job_id = jobs[0]["id"]
-                logger.info(f"Queued retry image job: {job_id}. Waiting for completion...")
+                logger.info(f"Queued image job: {job_id} (attempt {attempt}/{max_attempts}). Waiting for completion...")
                 wait_res = self.wait_for_jobs(job_ids=[job_id], timeout_seconds=300)
-            else:
-                raise
+                break
+            except RuntimeError as e:
+                last_error = e
+                err_str = str(e).lower()
+                if attempt < max_attempts and ("disabled" in err_str or "no project is open" in err_str or "target page" in err_str):
+                    backoff = 10.0 * attempt
+                    logger.warning(
+                        f"Flow image generation transient issue (attempt {attempt}/{max_attempts}): {e}. "
+                        f"Waiting {backoff:.0f}s for Flow DOM to unlock and reinitializing project..."
+                    )
+                    time.sleep(backoff)
+                    self.ensure_active_project(title=project_name)
+                    time.sleep(3.0)
+                else:
+                    raise last_error
 
         # Locate the resulting file using robust resolver
         job_files = []
@@ -321,31 +326,36 @@ class FlowClient:
         logger.info(
             f"Queueing video generation with model '{model}' (duration: {duration}s, upscaled)..."
         )
+        max_attempts = 3
+        wait_res = None
+        last_error = None
         start_time = time.time()
-        try:
-            res = self._post("generate", payload)
-            jobs = res.get("jobs", [])
-            if not jobs:
-                raise RuntimeError(f"No jobs returned from flow_generate: {res}")
-            job_id = jobs[0]["id"]
-            logger.info(f"Queued video job: {job_id}. Waiting for completion...")
-            wait_res = self.wait_for_jobs(job_ids=[job_id], timeout_seconds=600)
-        except RuntimeError as e:
-            err_str = str(e).lower()
-            if "disabled" in err_str or "no project is open" in err_str or "target page" in err_str:
-                logger.warning(f"Flow video generation encountered transient issue: {e}. Reinitializing project '{project_name}' and retrying...")
-                self.create_project(title=project_name)
-                time.sleep(3.0)
+
+        for attempt in range(1, max_attempts + 1):
+            try:
                 start_time = time.time()
                 res = self._post("generate", payload)
                 jobs = res.get("jobs", [])
                 if not jobs:
-                    raise RuntimeError(f"No jobs returned from flow_generate on retry: {res}")
+                    raise RuntimeError(f"No jobs returned from flow_generate: {res}")
                 job_id = jobs[0]["id"]
-                logger.info(f"Queued retry video job: {job_id}. Waiting for completion...")
+                logger.info(f"Queued video job: {job_id} (attempt {attempt}/{max_attempts}). Waiting for completion...")
                 wait_res = self.wait_for_jobs(job_ids=[job_id], timeout_seconds=600)
-            else:
-                raise
+                break
+            except RuntimeError as e:
+                last_error = e
+                err_str = str(e).lower()
+                if attempt < max_attempts and ("disabled" in err_str or "no project is open" in err_str or "target page" in err_str):
+                    backoff = 10.0 * attempt
+                    logger.warning(
+                        f"Flow video generation transient issue (attempt {attempt}/{max_attempts}): {e}. "
+                        f"Waiting {backoff:.0f}s for Flow DOM to unlock and reinitializing project..."
+                    )
+                    time.sleep(backoff)
+                    self.ensure_active_project(title=project_name)
+                    time.sleep(3.0)
+                else:
+                    raise last_error
 
         job_files = []
         for j in wait_res.get("jobs", []):
@@ -463,7 +473,7 @@ def run_stage_4(
                 "dialogue": dialogue,
             }
             save_job_state(state_file, state)
-            time.sleep(3.0)  # brief stabilization pause
+            time.sleep(8.0)  # Stabilization pause for Flow to finish saving image tile and unlock composer
         else:
             logger.info(f"[{scene_id}] Reusing existing image: {img_dest}")
 
@@ -489,10 +499,11 @@ def run_stage_4(
         else:
             logger.info(f"[{scene_id}] Reusing existing clip: {clip_dest}")
 
-        # Cooldown between scene jobs to avoid rate limits
-        if i < total_scenes and cooldown_sec > 0:
-            logger.info(f"Cooldown pause: waiting {cooldown_sec:.1f}s before next scene...")
-            time.sleep(cooldown_sec)
+        # Cooldown between scene jobs to avoid rate limits and let Flow grid settle
+        if i < total_scenes:
+            actual_cooldown = max(12.0, cooldown_sec)
+            logger.info(f"Cooldown pause: waiting {actual_cooldown:.1f}s before next scene (Flow settling)...")
+            time.sleep(actual_cooldown)
 
     logger.info(f"\nAll {total_scenes} scenes processed successfully.")
     return completed_scenes
