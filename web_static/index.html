@@ -1,0 +1,1247 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flow Reel Recreation Studio</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Vue 3 CDN -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            },
+            surface: {
+              800: '#1e293b',
+              900: '#0f172a',
+              950: '#020617',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    [v-cloak] { display: none; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+  </style>
+</head>
+<body class="bg-surface-950 text-slate-100 min-h-screen antialiased flex flex-col font-sans">
+  <div id="app" v-cloak class="flex flex-col flex-1">
+    
+    <!-- TOP NAVIGATION BAR -->
+    <header class="bg-surface-900 border-b border-slate-800 sticky top-0 z-40 px-6 py-3.5 flex items-center justify-between shadow-lg">
+      <div class="flex items-center space-x-3 cursor-pointer" @click="currentView = 'projects'">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 via-indigo-500 to-purple-500 flex items-center justify-center shadow-indigo-500/20 shadow-md">
+          <i data-lucide="clapperboard" class="w-5 h-5 text-white"></i>
+        </div>
+        <div>
+          <h1 class="font-bold text-lg tracking-tight flex items-center gap-2">
+            Flow Reel Studio
+            <span class="text-xs px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 font-medium border border-indigo-500/20">Banana Pro + Omni</span>
+          </h1>
+          <p class="text-xs text-slate-400">Automated Video Recreation & Avatar Pipeline</p>
+        </div>
+      </div>
+
+      <!-- Center Nav Tabs -->
+      <nav class="hidden md:flex items-center space-x-1 bg-surface-950 p-1 rounded-xl border border-slate-800/80">
+        <button 
+          @click="currentView = 'projects'"
+          :class="currentView === 'projects' ? 'bg-surface-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'"
+          class="px-4 py-1.5 rounded-lg text-sm font-medium transition flex items-center gap-2">
+          <i data-lucide="folder" class="w-4 h-4"></i>
+          Projects Gallery
+          <span class="text-xs bg-slate-800 px-1.5 py-0.2 rounded-full text-slate-300">{{ projects.length }}</span>
+        </button>
+        <button 
+          v-if="selectedProject"
+          @click="currentView = 'detail'"
+          :class="currentView === 'detail' ? 'bg-surface-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'"
+          class="px-4 py-1.5 rounded-lg text-sm font-medium transition flex items-center gap-2">
+          <i data-lucide="layout" class="w-4 h-4"></i>
+          Project Inspector
+        </button>
+        <button 
+          @click="openNewProjectModal()"
+          class="px-4 py-1.5 rounded-lg text-sm font-medium bg-gradient-to-r from-brand-600 to-indigo-600 text-white hover:opacity-95 transition flex items-center gap-2 shadow-sm">
+          <i data-lucide="plus-circle" class="w-4 h-4"></i>
+          New Project
+        </button>
+      </nav>
+
+      <!-- Right: Flow MCP Server Status -->
+      <div class="flex items-center space-x-3">
+        <div class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-surface-950 border border-slate-800 text-xs">
+          <span class="relative flex h-2 w-2">
+            <span v-if="flowStatus.connected" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span :class="flowStatus.connected ? 'bg-emerald-500' : 'bg-rose-500'" class="relative inline-flex rounded-full h-2 w-2"></span>
+          </span>
+          <span class="font-medium text-slate-300">Flow MCP</span>
+          <span v-if="flowStatus.connected" class="text-slate-400 font-mono">
+            <span class="text-emerald-400 font-bold">{{ flowStatus.credits_remaining }}</span> cr
+          </span>
+          <span v-else class="text-rose-400 font-medium">Offline</span>
+        </div>
+
+        <button 
+          @click="openNewProjectModal()" 
+          class="md:hidden p-2 rounded-lg bg-brand-600 text-white hover:bg-brand-500">
+          <i data-lucide="plus" class="w-5 h-5"></i>
+        </button>
+      </div>
+    </header>
+
+
+    <!-- MAIN CONTENT CONTAINER -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-6 flex flex-col space-y-6">
+
+      <!-- ================================================================= -->
+      <!-- VIEW 1: PROJECTS GALLERY -->
+      <!-- ================================================================= -->
+      <section v-if="currentView === 'projects'" class="space-y-6">
+        <!-- Gallery Header & Filters -->
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-surface-900 p-5 rounded-2xl border border-slate-800/80 shadow-md">
+          <div>
+            <h2 class="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+              <i data-lucide="film" class="w-5 h-5 text-indigo-400"></i>
+              Recreation Projects
+            </h2>
+            <p class="text-sm text-slate-400 mt-0.5">Explore active runs, review checkpoints, and finished captioned reels.</p>
+          </div>
+
+          <div class="flex items-center gap-3 w-full sm:w-auto">
+            <button 
+              @click="fetchProjects()" 
+              class="p-2.5 rounded-xl bg-surface-950 hover:bg-slate-800 text-slate-300 border border-slate-800 transition flex items-center gap-2 text-sm">
+              <i data-lucide="refresh-cw" class="w-4 h-4" :class="{'animate-spin': isRefreshing}"></i>
+              <span class="hidden sm:inline">Refresh</span>
+            </button>
+            <button 
+              @click="openNewProjectModal()" 
+              class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white font-medium text-sm flex items-center gap-2 shadow-lg shadow-indigo-600/20 transition">
+              <i data-lucide="sparkles" class="w-4 h-4"></i>
+              Create New Reel
+            </button>
+          </div>
+        </div>
+
+        <!-- Empty State -->
+        <div v-if="projects.length === 0" class="text-center py-20 bg-surface-900/50 rounded-2xl border border-dashed border-slate-800 p-8">
+          <div class="w-16 h-16 rounded-2xl bg-surface-800 flex items-center justify-center mx-auto mb-4 text-slate-400">
+            <i data-lucide="video-off" class="w-8 h-8"></i>
+          </div>
+          <h3 class="text-lg font-semibold text-white">No Recreation Projects Found</h3>
+          <p class="text-slate-400 text-sm max-w-md mx-auto mt-1 mb-6">
+            Get started by entering a video URL (Facebook, YouTube Shorts, TikTok) and selecting your avatar image.
+          </p>
+          <button 
+            @click="openNewProjectModal()"
+            class="px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-medium text-sm inline-flex items-center gap-2 shadow-lg">
+            <i data-lucide="plus" class="w-4 h-4"></i>
+            Launch First Recreation
+          </button>
+        </div>
+
+        <!-- Projects Grid -->
+        <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div 
+            v-for="proj in projects" 
+            :key="proj.job_id"
+            class="group bg-surface-900 rounded-2xl border border-slate-800 hover:border-indigo-500/50 transition-all duration-200 overflow-hidden flex flex-col shadow-lg hover:shadow-indigo-500/10">
+            
+            <!-- Card Media Header / Preview -->
+            <div class="relative aspect-video bg-surface-950 overflow-hidden cursor-pointer" @click="selectProject(proj.job_id)">
+              <img 
+                v-if="proj.thumbnail" 
+                :src="proj.thumbnail" 
+                alt="Thumbnail" 
+                class="w-full h-full object-cover group-hover:scale-105 transition duration-300">
+              <div v-else class="w-full h-full flex items-center justify-center text-slate-600">
+                <i data-lucide="image" class="w-10 h-10"></i>
+              </div>
+
+              <!-- Status Badge -->
+              <div class="absolute top-3 left-3">
+                <span 
+                  :class="statusBadgeClass(proj.status)"
+                  class="text-xs font-semibold px-2.5 py-1 rounded-full border shadow-md flex items-center gap-1.5 backdrop-blur-md">
+                  <span class="w-1.5 h-1.5 rounded-full" :class="statusDotClass(proj.status)"></span>
+                  {{ formatStatus(proj.status) }}
+                </span>
+              </div>
+
+              <!-- Scene Count Badge -->
+              <div class="absolute bottom-3 right-3 bg-black/70 backdrop-blur-md px-2 py-0.5 rounded-md text-xs font-mono text-slate-200 border border-white/10 flex items-center gap-1">
+                <i data-lucide="layers" class="w-3.5 h-3.5 text-indigo-400"></i>
+                {{ proj.completed_clips }} / {{ proj.scenes_count || '?' }} clips
+              </div>
+            </div>
+
+            <!-- Card Body -->
+            <div class="p-5 flex-1 flex flex-col justify-between space-y-4">
+              <div>
+                <h3 class="font-bold text-white text-base group-hover:text-indigo-400 transition cursor-pointer flex items-center justify-between" @click="selectProject(proj.job_id)">
+                  <span class="font-mono text-sm truncate mr-2">{{ proj.job_id }}</span>
+                  <i data-lucide="chevron-right" class="w-4 h-4 text-slate-500 group-hover:translate-x-1 transition"></i>
+                </h3>
+                
+                <div class="text-xs text-slate-400 flex items-center gap-4 mt-2">
+                  <span class="flex items-center gap-1">
+                    <i data-lucide="clock" class="w-3.5 h-3.5 text-slate-500"></i>
+                    {{ formatDate(proj.created_at) }}
+                  </span>
+                  <span v-if="proj.duration" class="flex items-center gap-1">
+                    <i data-lucide="play" class="w-3.5 h-3.5 text-slate-500"></i>
+                    {{ Math.round(proj.duration) }}s source
+                  </span>
+                </div>
+              </div>
+
+              <!-- Quick Action Footer -->
+              <div class="pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2">
+                <button 
+                  @click.stop="selectProject(proj.job_id)"
+                  class="flex-1 py-2 px-3 rounded-xl bg-surface-800 hover:bg-slate-700 text-xs font-medium text-slate-200 flex items-center justify-center gap-1.5 transition">
+                  <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+                  Inspect & Edit
+                </button>
+
+                <button 
+                  @click.stop="confirmDeleteProject(proj.job_id)"
+                  class="p-2 rounded-xl bg-surface-950 hover:bg-rose-500/20 text-slate-500 hover:text-rose-400 border border-slate-800/80 transition"
+                  title="Delete Project">
+                  <i data-lucide="trash-2" class="w-4 h-4"></i>
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </section>
+
+
+      <!-- ================================================================= -->
+      <!-- VIEW 2: PROJECT DETAIL / INSPECTOR -->
+      <!-- ================================================================= -->
+      <section v-if="currentView === 'detail' && activeProject" class="space-y-6">
+        
+        <!-- Project Header Card -->
+        <div class="bg-surface-900 p-6 rounded-2xl border border-slate-800 shadow-md flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div class="space-y-1">
+            <div class="flex items-center gap-3">
+              <button @click="currentView = 'projects'" class="p-1.5 rounded-lg bg-surface-800 hover:bg-slate-700 text-slate-400 hover:text-white transition">
+                <i data-lucide="arrow-left" class="w-4 h-4"></i>
+              </button>
+              <h2 class="text-xl font-bold text-white font-mono flex items-center gap-2">
+                {{ activeProject.summary.job_id }}
+              </h2>
+              <span :class="statusBadgeClass(activeProject.summary.status)" class="text-xs font-semibold px-2.5 py-0.5 rounded-full border">
+                {{ formatStatus(activeProject.summary.status) }}
+              </span>
+            </div>
+            <p class="text-xs text-slate-400 flex items-center gap-4 pt-1">
+              <span>Created: {{ formatDate(activeProject.summary.created_at) }}</span>
+              <span>•</span>
+              <span>Scenes Detected: {{ activeProject.scenes.length }}</span>
+              <span>•</span>
+              <span>Clips Completed: {{ activeProject.summary.completed_clips }} / {{ activeProject.scenes.length }}</span>
+            </p>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
+            <!-- Stage 6 Trigger Button -->
+            <button 
+              v-if="activeProject.scenes.length > 0 && activeProject.summary.completed_clips >= activeProject.scenes.length"
+              @click="triggerApproveAndStitch()"
+              :disabled="isStitching"
+              class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold text-xs flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition">
+              <i data-lucide="check-circle" class="w-4 h-4" :class="{'animate-spin': isStitching}"></i>
+              {{ isStitching ? 'Concatenating & Transcribing SRT...' : 'Approve & Stitch Final Reel (Stage 6)' }}
+            </button>
+
+            <!-- Resume / Start Generation -->
+            <button 
+              v-else-if="!activeProject.is_active"
+              @click="triggerResumeGeneration()"
+              class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white font-semibold text-xs flex items-center gap-2 shadow-lg shadow-indigo-600/20 transition">
+              <i data-lucide="play" class="w-4 h-4"></i>
+              Generate Remaining Clips (Stage 4)
+            </button>
+
+            <!-- Refresh Detail -->
+            <button 
+              @click="fetchProjectDetails(activeProject.summary.job_id)"
+              class="p-2.5 rounded-xl bg-surface-800 hover:bg-slate-700 text-slate-300 transition"
+              title="Refresh project">
+              <i data-lucide="rotate-cw" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Live Terminal Logs (If Running) -->
+        <div v-if="activeProject.is_active || activeProject.active_logs?.length" class="bg-black/90 p-4 rounded-2xl border border-slate-800 font-mono text-xs text-slate-300 shadow-inner">
+          <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800 text-slate-400">
+            <span class="flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              Live Pipeline Stream
+            </span>
+            <span class="text-[10px] uppercase tracking-wider text-slate-500">run_reel.py</span>
+          </div>
+          <div class="max-h-48 overflow-y-auto space-y-1 select-text">
+            <div v-for="(log, idx) in activeProject.active_logs" :key="idx" class="leading-relaxed">
+              {{ log }}
+            </div>
+          </div>
+        </div>
+
+        <!-- Detail Sub-Navigation Tabs -->
+        <div class="flex items-center space-x-2 border-b border-slate-800 pb-2">
+          <button 
+            @click="detailTab = 'scenes'"
+            :class="detailTab === 'scenes' ? 'text-indigo-400 border-indigo-500 bg-indigo-500/10' : 'text-slate-400 hover:text-slate-200 border-transparent'"
+            class="px-4 py-2 rounded-xl text-sm font-medium border transition flex items-center gap-2">
+            <i data-lucide="grid" class="w-4 h-4"></i>
+            Scene Breakdown & Generation
+            <span class="text-xs bg-slate-800 px-2 py-0.5 rounded-full text-slate-300">{{ activeProject.scenes.length }}</span>
+          </button>
+          <button 
+            v-if="activeProject.final_video_url"
+            @click="detailTab = 'final'"
+            :class="detailTab === 'final' ? 'text-emerald-400 border-emerald-500 bg-emerald-500/10' : 'text-slate-400 hover:text-slate-200 border-transparent'"
+            class="px-4 py-2 rounded-xl text-sm font-medium border transition flex items-center gap-2">
+            <i data-lucide="award" class="w-4 h-4 text-emerald-400"></i>
+            Final Stitched Reel & SRT
+          </button>
+          <button 
+            v-if="activeProject.source_video_url"
+            @click="detailTab = 'source'"
+            :class="detailTab === 'source' ? 'text-indigo-400 border-indigo-500 bg-indigo-500/10' : 'text-slate-400 hover:text-slate-200 border-transparent'"
+            class="px-4 py-2 rounded-xl text-sm font-medium border transition flex items-center gap-2">
+            <i data-lucide="video" class="w-4 h-4"></i>
+            Original Source Video
+          </button>
+        </div>
+
+        <!-- TAB 1: SCENE BREAKDOWN (SIDE-BY-SIDE INSPECTOR) -->
+        <div v-if="detailTab === 'scenes'" class="space-y-6">
+          <div v-if="activeProject.scenes.length === 0" class="text-center py-16 bg-surface-900 rounded-2xl border border-slate-800">
+            <p class="text-slate-400">No scene metadata detected yet. Run Stage 1 & 2 first.</p>
+          </div>
+
+          <div 
+            v-for="scene in activeProject.scenes" 
+            :key="scene.scene_id"
+            class="bg-surface-900 rounded-2xl border border-slate-800 p-5 shadow-md space-y-4">
+            
+            <!-- Scene Header Bar -->
+            <div class="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-800">
+              <div class="flex items-center gap-2">
+                <span class="font-mono text-sm font-bold text-white px-2.5 py-1 rounded-lg bg-surface-800 border border-slate-700">
+                  {{ scene.scene_id }}
+                </span>
+                <span class="text-xs text-slate-400 font-mono">
+                  {{ scene.start_time.toFixed(1) }}s - {{ scene.end_time.toFixed(1) }}s ({{ scene.duration.toFixed(1) }}s source -> {{ scene.omni_duration }}s Omni)
+                </span>
+              </div>
+
+              <!-- Scene Actions -->
+              <div class="flex items-center gap-2">
+                <button 
+                  @click="openRegenModal(scene)"
+                  class="px-3 py-1.5 rounded-lg bg-surface-800 hover:bg-slate-700 text-xs font-medium text-slate-300 flex items-center gap-1.5 transition">
+                  <i data-lucide="rotate-cw" class="w-3.5 h-3.5 text-amber-400"></i>
+                  Regenerate
+                </button>
+              </div>
+            </div>
+
+            <!-- Spoken Dialogue -->
+            <div class="bg-surface-950 p-3.5 rounded-xl border border-slate-800/80">
+              <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-500 block mb-1">Spoken Dialogue</span>
+              <p class="text-sm font-medium text-slate-200">
+                "{{ scene.dialogue || '[ambient action / no speech]' }}"
+              </p>
+            </div>
+
+            <!-- 3-Column Visual Comparison Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              
+              <!-- Column 1: Source Transition Screenshot -->
+              <div class="space-y-2">
+                <div class="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
+                  <i data-lucide="camera" class="w-3.5 h-3.5 text-blue-400"></i>
+                  Original Reference Screenshot
+                </div>
+                <div class="aspect-[9/16] bg-surface-950 rounded-xl overflow-hidden border border-slate-800 flex items-center justify-center relative shadow-inner">
+                  <img 
+                    v-if="scene.screenshot_url" 
+                    :src="scene.screenshot_url" 
+                    alt="Scene Screenshot" 
+                    class="w-full h-full object-cover">
+                  <span v-else class="text-xs text-slate-600">Pending</span>
+                </div>
+              </div>
+
+              <!-- Column 2: Banana Pro 2.1 Generated Keyframe -->
+              <div class="space-y-2">
+                <div class="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
+                  <i data-lucide="image" class="w-3.5 h-3.5 text-indigo-400"></i>
+                  Banana Pro 2.1 Keyframe (0 cr)
+                </div>
+                <div class="aspect-[9/16] bg-surface-950 rounded-xl overflow-hidden border border-slate-800 flex items-center justify-center relative shadow-inner">
+                  <img 
+                    v-if="scene.generated_image_url" 
+                    :src="scene.generated_image_url" 
+                    alt="Generated Keyframe" 
+                    class="w-full h-full object-cover">
+                  <div v-else class="text-center p-4 text-xs text-slate-500 space-y-1">
+                    <i data-lucide="clock" class="w-6 h-6 mx-auto opacity-50"></i>
+                    <span>Not Generated Yet</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Column 3: OmniFlash 1.1 Video Clip -->
+              <div class="space-y-2">
+                <div class="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
+                  <i data-lucide="film" class="w-3.5 h-3.5 text-purple-400"></i>
+                  OmniFlash 1.1 Video Clip
+                </div>
+                <div class="aspect-[9/16] bg-surface-950 rounded-xl overflow-hidden border border-slate-800 flex items-center justify-center relative shadow-inner">
+                  <video 
+                    v-if="scene.clip_url" 
+                    :src="scene.clip_url" 
+                    controls 
+                    playsinline 
+                    class="w-full h-full object-cover">
+                  </video>
+                  <div v-else class="text-center p-4 text-xs text-slate-500 space-y-1">
+                    <i data-lucide="video-off" class="w-6 h-6 mx-auto opacity-50"></i>
+                    <span>Video Pending</span>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Prompts Disclosure -->
+            <details class="text-xs text-slate-400 bg-surface-950/60 p-3 rounded-xl border border-slate-800/60">
+              <summary class="cursor-pointer font-medium hover:text-slate-200 select-none">
+                View Generated Flow Prompts
+              </summary>
+              <div class="mt-3 space-y-2 pt-2 border-t border-slate-800/80">
+                <div>
+                  <span class="text-indigo-400 font-semibold block">Banana Pro 2.1 Image Prompt:</span>
+                  <p class="text-slate-300 font-mono text-[11px] mt-0.5">{{ scene.image_prompt }}</p>
+                </div>
+                <div>
+                  <span class="text-purple-400 font-semibold block">OmniFlash 1.1 Video Prompt:</span>
+                  <p class="text-slate-300 font-mono text-[11px] mt-0.5">{{ scene.video_prompt }}</p>
+                </div>
+              </div>
+            </details>
+
+          </div>
+        </div>
+
+        <!-- TAB 2: FINAL REEL & SRT CAPTIONS -->
+        <div v-if="detailTab === 'final'" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          
+          <!-- Master Stitched Video Player -->
+          <div class="bg-surface-900 p-6 rounded-2xl border border-slate-800 shadow-md space-y-4">
+            <h3 class="text-base font-bold text-white flex items-center gap-2">
+              <i data-lucide="film" class="w-5 h-5 text-emerald-400"></i>
+              Final Normalized Master Video (1080x1920)
+            </h3>
+            <div class="aspect-[9/16] max-h-[580px] bg-black rounded-xl overflow-hidden border border-slate-800 mx-auto">
+              <video 
+                :src="activeProject.final_video_url" 
+                controls 
+                class="w-full h-full object-contain">
+              </video>
+            </div>
+            <div class="flex items-center gap-3 pt-2">
+              <a 
+                :href="activeProject.final_video_url" 
+                download="final_reel.mp4" 
+                class="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs text-center flex items-center justify-center gap-2 transition">
+                <i data-lucide="download" class="w-4 h-4"></i>
+                Download Master Video
+              </a>
+            </div>
+          </div>
+
+          <!-- Captioned Reel, Caption Styler & SRT Viewer -->
+          <div class="space-y-6">
+            <!-- Viral Caption Styler & Pop Engine Card -->
+            <div class="bg-surface-900 p-6 rounded-2xl border border-slate-800 shadow-md space-y-4">
+              <div class="flex items-center justify-between border-b border-slate-800/80 pb-3">
+                <div class="flex items-center gap-2.5">
+                  <div class="w-8 h-8 rounded-lg bg-yellow-500/20 text-yellow-400 flex items-center justify-center font-bold text-sm">
+                    <i data-lucide="sparkles" class="w-4 h-4"></i>
+                  </div>
+                  <div>
+                    <h3 class="text-sm font-bold text-white">Viral Caption & Pop Styler</h3>
+                    <p class="text-[11px] text-slate-400">Word-by-word yellow pop timed with faster-whisper</p>
+                  </div>
+                </div>
+                <span class="text-[10px] px-2 py-0.5 rounded-full bg-yellow-500/10 text-yellow-300 border border-yellow-500/20 font-medium">9:16 Shorts / Reels</span>
+              </div>
+
+              <!-- Style Presets Grid -->
+              <div>
+                <label class="block text-xs font-semibold text-slate-300 mb-2">Pop Highlight Style</label>
+                <div class="grid grid-cols-2 gap-2">
+                  <button 
+                    type="button" 
+                    @click="captionSettings.style = 'yellow-pop'"
+                    :class="captionSettings.style === 'yellow-pop' ? 'border-yellow-400 bg-yellow-400/10 text-yellow-300' : 'border-slate-800 bg-surface-950 text-slate-400 hover:border-slate-700'"
+                    class="p-2.5 rounded-xl border text-left transition flex items-center gap-2.5">
+                    <span class="w-3.5 h-3.5 rounded-full bg-[#FFE135] shadow-sm flex-shrink-0"></span>
+                    <div class="text-xs">
+                      <div class="font-bold text-white">Yellow Pop</div>
+                      <div class="text-[10px] text-slate-400">Viral #FFE135 bounce</div>
+                    </div>
+                  </button>
+
+                  <button 
+                    type="button" 
+                    @click="captionSettings.style = 'green-pop'"
+                    :class="captionSettings.style === 'green-pop' ? 'border-emerald-400 bg-emerald-400/10 text-emerald-300' : 'border-slate-800 bg-surface-950 text-slate-400 hover:border-slate-700'"
+                    class="p-2.5 rounded-xl border text-left transition flex items-center gap-2.5">
+                    <span class="w-3.5 h-3.5 rounded-full bg-[#22C55E] shadow-sm flex-shrink-0"></span>
+                    <div class="text-xs">
+                      <div class="font-bold text-white">Neon Green</div>
+                      <div class="text-[10px] text-slate-400">Electric green flash</div>
+                    </div>
+                  </button>
+
+                  <button 
+                    type="button" 
+                    @click="captionSettings.style = 'cyan-pop'"
+                    :class="captionSettings.style === 'cyan-pop' ? 'border-cyan-400 bg-cyan-400/10 text-cyan-300' : 'border-slate-800 bg-surface-950 text-slate-400 hover:border-slate-700'"
+                    class="p-2.5 rounded-xl border text-left transition flex items-center gap-2.5">
+                    <span class="w-3.5 h-3.5 rounded-full bg-[#06B6D4] shadow-sm flex-shrink-0"></span>
+                    <div class="text-xs">
+                      <div class="font-bold text-white">Electric Cyan</div>
+                      <div class="text-[10px] text-slate-400">Vibrant cyan glow</div>
+                    </div>
+                  </button>
+
+                  <button 
+                    type="button" 
+                    @click="captionSettings.style = 'clean-white'"
+                    :class="captionSettings.style === 'clean-white' ? 'border-slate-400 bg-slate-400/10 text-slate-200' : 'border-slate-800 bg-surface-950 text-slate-400 hover:border-slate-700'"
+                    class="p-2.5 rounded-xl border text-left transition flex items-center gap-2.5">
+                    <span class="w-3.5 h-3.5 rounded-full bg-white shadow-sm flex-shrink-0"></span>
+                    <div class="text-xs">
+                      <div class="font-bold text-white">Clean White</div>
+                      <div class="text-[10px] text-slate-400">Minimal bold white</div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Screen Position & Words Per Screen -->
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-semibold text-slate-300 mb-1.5">Position</label>
+                  <select v-model="captionSettings.position" class="w-full bg-surface-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none">
+                    <option value="lower-third">Lower Third (Reels Safe)</option>
+                    <option value="middle">Middle (Center Frame)</option>
+                    <option value="bottom">Bottom Edge</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-slate-300 mb-1.5">Words Per Screen</label>
+                  <select v-model="captionSettings.words_per_screen" class="w-full bg-surface-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none">
+                    <option :value="2">2 words (Fast)</option>
+                    <option :value="3">3 words (Standard)</option>
+                    <option :value="4">4 words (Balanced)</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Live Visual Preview Box -->
+              <div class="p-3.5 rounded-xl bg-surface-950 border border-slate-800 text-center">
+                <div class="text-[10px] text-slate-400 mb-1 uppercase tracking-wider font-semibold">Live Preview</div>
+                <div class="font-black text-base tracking-wide uppercase text-white drop-shadow-md py-1">
+                  COSTCO 
+                  <span v-if="captionSettings.style === 'yellow-pop'" class="text-[#FFE135] scale-110 inline-block px-1">WANTS</span>
+                  <span v-else-if="captionSettings.style === 'green-pop'" class="text-[#22C55E] scale-110 inline-block px-1">WANTS</span>
+                  <span v-else-if="captionSettings.style === 'cyan-pop'" class="text-[#06B6D4] scale-110 inline-block px-1">WANTS</span>
+                  <span v-else class="text-white scale-110 inline-block px-1">WANTS</span>
+                  FOR
+                </div>
+                <div class="text-[10px] text-slate-500">Font: Arial Black • Outline: 8px • Drop shadow: 3px</div>
+              </div>
+
+              <!-- Stitch & Burn Button -->
+              <button 
+                type="button" 
+                @click="burnCustomCaptions()"
+                :disabled="isCaptioning"
+                class="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-yellow-500 via-amber-500 to-yellow-600 hover:from-yellow-400 hover:to-amber-500 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-yellow-500/20 transition disabled:opacity-50">
+                <i v-if="isCaptioning" data-lucide="loader" class="w-4 h-4 animate-spin"></i>
+                <i v-else data-lucide="zap" class="w-4 h-4 fill-current"></i>
+                {{ isCaptioning ? 'Transcribing & Burning Captions...' : 'Stitch & Burn Viral Captions' }}
+              </button>
+            </div>
+
+            <!-- Captioned Reel if exists -->
+            <div v-if="activeProject.final_captioned_url" class="bg-surface-900 p-6 rounded-2xl border border-slate-800 shadow-md space-y-4">
+              <div class="flex items-center justify-between">
+                <h3 class="text-base font-bold text-white flex items-center gap-2">
+                  <i data-lucide="subtitles" class="w-5 h-5 text-yellow-400"></i>
+                  Burned-In Captioned Reel
+                </h3>
+                <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">Ready</span>
+              </div>
+              <div class="aspect-[9/16] max-h-[420px] bg-black rounded-xl overflow-hidden border border-slate-800 mx-auto">
+                <video 
+                  :src="activeProject.final_captioned_url" 
+                  controls 
+                  class="w-full h-full object-contain">
+                </video>
+              </div>
+              <a 
+                :href="activeProject.final_captioned_url" 
+                download="final_reel_captioned.mp4" 
+                class="block w-full py-2.5 px-4 rounded-xl bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-bold text-xs text-center transition shadow-md shadow-yellow-500/10">
+                Download Captioned Video
+              </a>
+            </div>
+
+            <!-- SRT Transcript Box -->
+            <div class="bg-surface-900 p-6 rounded-2xl border border-slate-800 shadow-md space-y-3">
+              <div class="flex items-center justify-between">
+                <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                  <i data-lucide="file-text" class="w-4 h-4 text-slate-400"></i>
+                  Frame-Accurate SRT Captions
+                </h3>
+                <span class="text-xs text-slate-400 font-mono">faster-whisper</span>
+              </div>
+              <textarea 
+                readonly 
+                class="w-full h-64 bg-surface-950 border border-slate-800 rounded-xl p-3.5 font-mono text-xs text-slate-300 resize-none leading-relaxed focus:outline-none" 
+                :value="activeProject.srt_text">
+              </textarea>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- TAB 3: SOURCE VIDEO -->
+        <div v-if="detailTab === 'source'" class="bg-surface-900 p-6 rounded-2xl border border-slate-800 shadow-md max-w-lg mx-auto space-y-4">
+          <h3 class="text-base font-bold text-white flex items-center gap-2">
+            <i data-lucide="video" class="w-5 h-5 text-blue-400"></i>
+            Original Downloaded Source Video
+          </h3>
+          <div class="aspect-[9/16] bg-black rounded-xl overflow-hidden border border-slate-800">
+            <video 
+              :src="activeProject.source_video_url" 
+              controls 
+              class="w-full h-full object-contain">
+            </video>
+          </div>
+        </div>
+
+      </section>
+
+    </main>
+
+
+    <!-- ================================================================= -->
+    <!-- MODAL 1: CREATE NEW PROJECT -->
+    <!-- ================================================================= -->
+    <div v-if="showNewModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <div class="bg-surface-900 border border-slate-800 rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto">
+        
+        <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-lg bg-indigo-600/20 text-indigo-400 flex items-center justify-center">
+              <i data-lucide="sparkles" class="w-4 h-4"></i>
+            </div>
+            <h3 class="text-lg font-bold text-white">Create New Recreation Project</h3>
+          </div>
+          <button @click="showNewModal = false" class="text-slate-400 hover:text-white p-1 rounded-lg">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+
+        <form @submit.prevent="submitCreateProject()" class="space-y-5 text-sm">
+          
+          <!-- Source Video URL -->
+          <div class="space-y-1.5">
+            <label class="font-semibold text-slate-200 flex items-center justify-between">
+              <span>Source Video URL</span>
+              <span class="text-xs text-slate-400 font-normal">Facebook Reel, YouTube Shorts, TikTok</span>
+            </label>
+            <input 
+              v-model="newForm.video_source" 
+              type="text" 
+              required 
+              placeholder="https://www.facebook.com/share/r/... or YouTube link"
+              class="w-full bg-surface-950 border border-slate-800 rounded-xl px-4 py-2.5 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono text-xs">
+          </div>
+
+          <!-- Avatar Selection -->
+          <div class="space-y-2">
+            <label class="font-semibold text-slate-200 flex items-center justify-between">
+              <span>AI Avatar Reference Image</span>
+              <span class="text-xs text-indigo-400 font-normal cursor-pointer" @click="$refs.avatarFileInput.click()">
+                + Upload New Avatar
+              </span>
+            </label>
+            
+            <input 
+              type="file" 
+              ref="avatarFileInput" 
+              @change="handleAvatarUpload" 
+              accept="image/*" 
+              class="hidden">
+
+            <div class="grid grid-cols-3 sm:grid-cols-4 gap-3">
+              <div 
+                v-for="av in availableAvatars" 
+                :key="av.path"
+                @click="newForm.avatar_path = av.path"
+                :class="newForm.avatar_path === av.path ? 'border-indigo-500 ring-2 ring-indigo-500/30' : 'border-slate-800 hover:border-slate-700'"
+                class="aspect-square bg-surface-950 rounded-xl overflow-hidden border p-1 cursor-pointer transition relative group flex flex-col items-center justify-center">
+                <img :src="av.url" :alt="av.name" class="w-full h-full object-cover rounded-lg">
+                <div v-if="newForm.avatar_path === av.path" class="absolute top-2 right-2 bg-indigo-600 rounded-full p-0.5 text-white">
+                  <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                </div>
+              </div>
+            </div>
+            <p v-if="newForm.avatar_path" class="text-[11px] text-slate-400 font-mono truncate">
+              Selected: {{ newForm.avatar_path }}
+            </p>
+          </div>
+
+          <!-- Pipeline Execution Mode -->
+          <div class="space-y-1.5">
+            <label class="font-semibold text-slate-200">Execution Mode</label>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <label 
+                :class="newForm.mode === 'stop_at_review' ? 'border-indigo-500 bg-indigo-500/10' : 'border-slate-800 bg-surface-950'"
+                class="border rounded-xl p-3 cursor-pointer transition flex flex-col justify-between">
+                <input type="radio" value="stop_at_review" v-model="newForm.mode" class="hidden">
+                <span class="font-semibold text-white block">Review Checkpoint</span>
+                <span class="text-[11px] text-slate-400 block mt-1">Generates all clips and pauses at Stage 5 for human inspection before final stitch.</span>
+              </label>
+
+              <label 
+                :class="newForm.mode === 'dry_run' ? 'border-amber-500 bg-amber-500/10' : 'border-slate-800 bg-surface-950'"
+                class="border rounded-xl p-3 cursor-pointer transition flex flex-col justify-between">
+                <input type="radio" value="dry_run" v-model="newForm.mode" class="hidden">
+                <span class="font-semibold text-white block">Dry Run (0 cr)</span>
+                <span class="text-[11px] text-slate-400 block mt-1">Runs Stages 1-3 only: downloads, transcribes, cuts scenes & maps prompts.</span>
+              </label>
+
+              <label 
+                :class="newForm.mode === 'full_auto' ? 'border-emerald-500 bg-emerald-500/10' : 'border-slate-800 bg-surface-950'"
+                class="border rounded-xl p-3 cursor-pointer transition flex flex-col justify-between">
+                <input type="radio" value="full_auto" v-model="newForm.mode" class="hidden">
+                <span class="font-semibold text-white block">Full Automatic</span>
+                <span class="text-[11px] text-slate-400 block mt-1">Runs Stages 1-6 end-to-end and directly produces the final stitched reel.</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Advanced Options (Accordion) -->
+          <details class="bg-surface-950 p-4 rounded-xl border border-slate-800/80">
+            <summary class="font-semibold text-slate-300 cursor-pointer select-none text-xs">
+              Advanced Generation Settings (Cooldown, Models, Captions)
+            </summary>
+            
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 mt-2 border-t border-slate-800 text-xs">
+              
+              <div class="space-y-1">
+                <label class="text-slate-400">Scene Cut Threshold (ContentDetector)</label>
+                <input type="number" step="0.5" v-model.number="newForm.threshold" class="w-full bg-surface-900 border border-slate-800 rounded-lg p-2 text-white">
+              </div>
+
+              <div class="space-y-1">
+                <label class="text-slate-400">Cooldown Between Scenes (seconds)</label>
+                <input type="number" step="1" v-model.number="newForm.cooldown" class="w-full bg-surface-900 border border-slate-800 rounded-lg p-2 text-white">
+              </div>
+
+              <div class="space-y-1">
+                <label class="text-slate-400">Image Model (Pass 1)</label>
+                <select v-model="newForm.model_image" class="w-full bg-surface-900 border border-slate-800 rounded-lg p-2 text-white font-mono text-xs">
+                  <option value="Nano Banana Pro">Banana Pro 2.1 (Nano Banana Pro)</option>
+                </select>
+              </div>
+
+              <div class="space-y-1">
+                <label class="text-slate-400">Video Model (Pass 2)</label>
+                <select v-model="newForm.model_video" class="w-full bg-surface-900 border border-slate-800 rounded-lg p-2 text-white font-mono text-xs">
+                  <option value="Omni 1.1 Flash">OmniFlash 1.1 (Omni 1.1 Flash)</option>
+                  <option value="Veo 3.1 - Fast">Veo 3.1 - Fast</option>
+                  <option value="Veo 3.1 - Quality">Veo 3.1 - Quality</option>
+                </select>
+              </div>
+
+              <div class="sm:col-span-2 flex items-center gap-2 pt-2">
+                <input type="checkbox" id="burn_captions_toggle" v-model="newForm.burn_captions" class="rounded bg-surface-900 border-slate-800 text-indigo-600 focus:ring-0">
+                <label for="burn_captions_toggle" class="text-slate-300 font-medium cursor-pointer">
+                  Burn in styled SRT subtitles into final video (final_reel_captioned.mp4)
+                </label>
+              </div>
+
+            </div>
+          </details>
+
+          <!-- Submit Buttons -->
+          <div class="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+            <button 
+              type="button" 
+              @click="showNewModal = false" 
+              class="px-4 py-2.5 rounded-xl bg-surface-800 hover:bg-slate-700 text-slate-300 font-medium transition">
+              Cancel
+            </button>
+            <button 
+              type="submit" 
+              :disabled="isSubmitting"
+              class="px-6 py-2.5 rounded-xl bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white font-semibold flex items-center gap-2 shadow-lg shadow-indigo-600/20 transition">
+              <i data-lucide="sparkles" class="w-4 h-4"></i>
+              {{ isSubmitting ? 'Launching Run...' : 'Launch Recreation Pipeline' }}
+            </button>
+          </div>
+
+        </form>
+
+      </div>
+    </div>
+
+
+    <!-- ================================================================= -->
+    <!-- MODAL 2: REGENERATE CLIP -->
+    <!-- ================================================================= -->
+    <div v-if="showRegenModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <div class="bg-surface-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5">
+        
+        <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div class="flex items-center gap-2">
+            <i data-lucide="rotate-cw" class="w-5 h-5 text-amber-400"></i>
+            <h3 class="text-base font-bold text-white">Regenerate {{ regenTargetScene?.scene_id }}</h3>
+          </div>
+          <button @click="showRegenModal = false" class="text-slate-400 hover:text-white p-1 rounded-lg">
+            <i data-lucide="x" class="w-4 h-4"></i>
+          </button>
+        </div>
+
+        <div class="space-y-4 text-xs">
+          <div>
+            <span class="text-slate-400 block mb-1">Spoken Line:</span>
+            <p class="font-medium text-slate-200 bg-surface-950 p-2.5 rounded-lg border border-slate-800">
+              "{{ regenTargetScene?.dialogue }}"
+            </p>
+          </div>
+
+          <div class="space-y-1.5">
+            <label class="font-semibold text-slate-300">Prompt Adjustment / Instructions (Optional)</label>
+            <input 
+              v-model="regenForm.prompt_adjustment" 
+              type="text" 
+              placeholder="e.g. smile more, hold the cheesecake higher, natural eye contact"
+              class="w-full bg-surface-950 border border-slate-800 rounded-xl p-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500">
+          </div>
+
+          <div class="flex items-center gap-2 p-2 bg-surface-950 rounded-xl border border-slate-800/80">
+            <input type="checkbox" id="regen_image_toggle" v-model="regenForm.regen_image" class="rounded bg-surface-900 border-slate-800 text-indigo-600 focus:ring-0">
+            <label for="regen_image_toggle" class="text-slate-300 cursor-pointer">
+              Also regenerate keyframe image (Banana Pro 2.1) before video pass
+            </label>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+          <button @click="showRegenModal = false" class="px-4 py-2 rounded-xl bg-surface-800 hover:bg-slate-700 text-slate-300 text-xs font-medium">
+            Cancel
+          </button>
+          <button @click="submitRegenClip()" class="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs flex items-center gap-1.5 shadow-md">
+            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+            Regenerate Clip
+          </button>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const { createApp, ref, onMounted, nextTick } = Vue;
+
+    createApp({
+      setup() {
+        const currentView = ref('projects');
+        const detailTab = ref('scenes');
+        const projects = ref([]);
+        const selectedProject = ref(null);
+        const activeProject = ref(null);
+        const availableAvatars = ref([]);
+        const flowStatus = ref({ connected: false, credits_remaining: 0 });
+        const isRefreshing = ref(false);
+        const isSubmitting = ref(false);
+        const isStitching = ref(false);
+        const isCaptioning = ref(false);
+
+        // Modals
+        const showNewModal = ref(false);
+        const showRegenModal = ref(false);
+        const regenTargetScene = ref(null);
+
+        // Caption Settings
+        const captionSettings = ref({
+          style: 'yellow-pop',
+          position: 'lower-third',
+          font_name: 'Arial Black',
+          font_size: 28,
+          words_per_screen: 3,
+          uppercase: true,
+        });
+
+        // New Project Form
+        const newForm = ref({
+          video_source: 'https://www.facebook.com/share/r/1MwZdwibEr/',
+          avatar_path: '',
+          threshold: 27.0,
+          cooldown: 15.0,
+          model_image: 'Nano Banana Pro',
+          model_video: 'Omni 1.1 Flash',
+          burn_captions: true,
+          caption_style: 'yellow-pop',
+          caption_position: 'lower-third',
+          mode: 'stop_at_review',
+        });
+
+        // Regen Form
+        const regenForm = ref({
+          prompt_adjustment: '',
+          regen_image: false,
+        });
+
+        const refreshIcons = () => {
+          nextTick(() => {
+            if (window.lucide) {
+              window.lucide.createIcons();
+            }
+          });
+        };
+
+        const fetchStatus = async () => {
+          try {
+            const res = await fetch('/api/status');
+            flowStatus.value = await res.json();
+          } catch (e) {
+            flowStatus.value = { connected: false, credits_remaining: 0 };
+          }
+        };
+
+        const fetchAvatars = async () => {
+          try {
+            const res = await fetch('/api/avatars');
+            availableAvatars.value = await res.json();
+            if (availableAvatars.value.length > 0 && !newForm.value.avatar_path) {
+              newForm.value.avatar_path = availableAvatars.value[0].path;
+            }
+          } catch (e) {
+            console.error('Error fetching avatars:', e);
+          }
+        };
+
+        const fetchProjects = async () => {
+          isRefreshing.value = true;
+          try {
+            const res = await fetch('/api/projects');
+            projects.value = await res.json();
+          } catch (e) {
+            console.error('Error fetching projects:', e);
+          } finally {
+            isRefreshing.value = false;
+            refreshIcons();
+          }
+        };
+
+        const selectProject = async (jobId) => {
+          selectedProject.value = jobId;
+          await fetchProjectDetails(jobId);
+          currentView.value = 'detail';
+          refreshIcons();
+        };
+
+        const fetchProjectDetails = async (jobId) => {
+          try {
+            const res = await fetch(`/api/projects/${jobId}`);
+            if (res.ok) {
+              activeProject.value = await res.json();
+            }
+          } catch (e) {
+            console.error('Error fetching project details:', e);
+          } finally {
+            refreshIcons();
+          }
+        };
+
+        const confirmDeleteProject = async (jobId) => {
+          if (!confirm(`Are you sure you want to delete project ${jobId}?`)) return;
+          try {
+            await fetch(`/api/projects/${jobId}`, { method: 'DELETE' });
+            if (selectedProject.value === jobId) {
+              selectedProject.value = null;
+              activeProject.value = null;
+              currentView.value = 'projects';
+            }
+            await fetchProjects();
+          } catch (e) {
+            alert('Failed to delete project: ' + e);
+          }
+        };
+
+        const openNewProjectModal = () => {
+          showNewModal.value = true;
+          fetchAvatars();
+          refreshIcons();
+        };
+
+        const handleAvatarUpload = async (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+          const formData = new FormData();
+          formData.append('file', file);
+          try {
+            const res = await fetch('/api/upload/avatar', {
+              method: 'POST',
+              body: formData,
+            });
+            const data = await res.json();
+            await fetchAvatars();
+            newForm.value.avatar_path = data.path;
+          } catch (err) {
+            alert('Failed to upload avatar: ' + err);
+          }
+        };
+
+        const submitCreateProject = async () => {
+          isSubmitting.value = true;
+          try {
+            const res = await fetch('/api/projects/create', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(newForm.value),
+            });
+            const data = await res.json();
+            showNewModal.value = false;
+            await fetchProjects();
+            selectProject(data.job_id);
+          } catch (e) {
+            alert('Failed to launch project: ' + e);
+          } finally {
+            isSubmitting.value = false;
+          }
+        };
+
+        const openRegenModal = (scene) => {
+          regenTargetScene.value = scene;
+          regenForm.value.prompt_adjustment = '';
+          regenForm.value.regen_image = false;
+          showRegenModal.value = true;
+          refreshIcons();
+        };
+
+        const submitRegenClip = async () => {
+          if (!activeProject.value || !regenTargetScene.value) return;
+          const jobId = activeProject.value.summary.job_id;
+          try {
+            await fetch(`/api/projects/${jobId}/action`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                action: 'regen_clip',
+                clip_num: regenTargetScene.value.scene_num,
+                prompt_adjustment: regenForm.value.prompt_adjustment,
+                regen_image: regenForm.value.regen_image,
+              }),
+            });
+            showRegenModal.value = false;
+            alert(`Regeneration started for clip ${regenTargetScene.value.scene_num}!`);
+            setTimeout(() => fetchProjectDetails(jobId), 2000);
+          } catch (e) {
+            alert('Failed to start regen: ' + e);
+          }
+        };
+
+        const triggerApproveAndStitch = async () => {
+          if (!activeProject.value) return;
+          isStitching.value = true;
+          const jobId = activeProject.value.summary.job_id;
+          try {
+            const res = await fetch(`/api/projects/${jobId}/action`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                action: 'approve', 
+                burn_captions: true,
+                caption_style: captionSettings.value.style,
+                caption_position: captionSettings.value.position,
+              }),
+            });
+            const data = await res.json();
+            alert('Final reel stitched and accurate SRT captions generated successfully!');
+            await fetchProjectDetails(jobId);
+            detailTab.value = 'final';
+          } catch (e) {
+            alert('Stitching failed: ' + e);
+          } finally {
+            isStitching.value = false;
+            refreshIcons();
+          }
+        };
+
+        const burnCustomCaptions = async () => {
+          if (!activeProject.value) return;
+          isCaptioning.value = true;
+          const jobId = activeProject.value.summary.job_id;
+          try {
+            const res = await fetch(`/api/projects/${jobId}/caption`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(captionSettings.value),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || 'Caption burning failed');
+            alert('Viral pop captions burned successfully!');
+            await fetchProjectDetails(jobId);
+            detailTab.value = 'final';
+          } catch (e) {
+            alert('Caption burning failed: ' + e);
+          } finally {
+            isCaptioning.value = false;
+            refreshIcons();
+          }
+        };
+
+        const triggerResumeGeneration = async () => {
+          if (!activeProject.value) return;
+          const jobId = activeProject.value.summary.job_id;
+          try {
+            await fetch(`/api/projects/${jobId}/action`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'resume' }),
+            });
+            alert('Resumed generation!');
+            fetchProjectDetails(jobId);
+          } catch (e) {
+            alert('Resume failed: ' + e);
+          }
+        };
+
+        const formatStatus = (s) => {
+          const map = {
+            completed: 'Completed',
+            review_ready: 'Review Ready',
+            generating: 'Generating',
+            prompts_ready: 'Prompts Ready',
+            scenes_ready: 'Scenes Ready',
+            transcribed: 'Transcribed',
+            running: 'Running...',
+            initialized: 'Draft',
+          };
+          return map[s] || s;
+        };
+
+        const statusBadgeClass = (s) => {
+          if (s === 'completed') return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+          if (s === 'review_ready') return 'bg-amber-500/10 text-amber-400 border-amber-500/20';
+          if (s === 'generating' || s === 'running') return 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20';
+          return 'bg-slate-800 text-slate-300 border-slate-700';
+        };
+
+        const statusDotClass = (s) => {
+          if (s === 'completed') return 'bg-emerald-400';
+          if (s === 'review_ready') return 'bg-amber-400';
+          if (s === 'generating' || s === 'running') return 'bg-indigo-400 animate-ping';
+          return 'bg-slate-400';
+        };
+
+        const formatDate = (isoStr) => {
+          if (!isoStr) return '';
+          const d = new Date(isoStr);
+          return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        };
+
+        // Polling loop for active runs & Flow status
+        onMounted(() => {
+          fetchStatus();
+          fetchProjects();
+          fetchAvatars();
+          refreshIcons();
+
+          setInterval(() => {
+            fetchStatus();
+            if (activeProject.value && activeProject.value.is_active) {
+              fetchProjectDetails(activeProject.value.summary.job_id);
+            }
+          }, 4000);
+        });
+
+        return {
+          currentView,
+          detailTab,
+          projects,
+          selectedProject,
+          activeProject,
+          availableAvatars,
+          flowStatus,
+          isRefreshing,
+          isSubmitting,
+          isStitching,
+          isCaptioning,
+          captionSettings,
+          showNewModal,
+          showRegenModal,
+          regenTargetScene,
+          newForm,
+          regenForm,
+          fetchProjects,
+          selectProject,
+          fetchProjectDetails,
+          confirmDeleteProject,
+          openNewProjectModal,
+          handleAvatarUpload,
+          submitCreateProject,
+          openRegenModal,
+          submitRegenClip,
+          triggerApproveAndStitch,
+          burnCustomCaptions,
+          triggerResumeGeneration,
+          formatStatus,
+          statusBadgeClass,
+          statusDotClass,
+          formatDate,
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
