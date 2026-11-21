@@ -35,6 +35,7 @@ jobs/
 uploads/
 temp_*
 test_*
+check_*
 
 # OS metadata
 .DS_Store

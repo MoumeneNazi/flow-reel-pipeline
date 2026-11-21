@@ -116,11 +116,10 @@ class FlowClient:
         dest_image_path.parent.mkdir(parents=True, exist_ok=True)
         abs_avatar = str(avatar_path.resolve())
 
+        # CRITICAL: Only use the user's avatar image as reference.
+        # Passing screenshot_path (from the source video) causes Google Flow / Banana Pro
+        # to replicate the original video creator's face, cap, tattoos, and hair rather than the avatar.
         reference_images = [abs_avatar]
-        if screenshot_path:
-            p_sc = Path(screenshot_path).resolve()
-            if p_sc.is_file():
-                reference_images.append(str(p_sc))
 
         target_model = normalize_image_model(model)
         scene_spec = {

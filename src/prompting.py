@@ -2,7 +2,7 @@
 Stage 3 — Scene-to-Prompt Mapping:
 Aligns transcript word timestamps with detected scenes and generates Flow prompts.
 Dynamically extracts visual actions, food items, props, and setting from dialogue
-and aligns Reference Image 1 (Avatar) with Reference Image 2 (Scene Screenshot).
+and maps the User Avatar reference image into the exact culinary scene.
 """
 
 from pathlib import Path
@@ -232,11 +232,11 @@ def describe_scene_action_and_props(
 
     # Generic fallback based on position
     img = (
-        "Engaged in the kitchen action matching Reference Image 2, with the exact props, food, and posture from "
-        "Reference Image 2 faithfully preserved on the kitchen counter."
+        "Engaged in culinary cooking action in the luxury kitchen, with the exact props, food, and posture "
+        "faithfully arranged on the marble kitchen counter."
     )
     vid = (
-        "Performing the action from Reference Image 2 while speaking directly into camera: \"{dialogue}\". "
+        "Performing the culinary kitchen action while speaking directly into camera: \"{dialogue}\". "
         "Natural real-time movement and lip-sync"
     )
     return img, vid
@@ -252,8 +252,8 @@ def build_image_prompt(
     """
     Builds Flow Nano Banana Pro 2.1 image prompt:
     - 9:16 vertical orientation
-    - Explicitly bridges Reference Image 1 (Avatar) and Reference Image 2 (Scene Screenshot)
-    - Replaces subject with avatar reference image without describing face/hair
+    - Explicitly anchors to user avatar reference image
+    - Strictly forbids original video subject traits (caps, dreadlocks, braids, tattoos)
     - Recreates exact action, props, food items, and framing
     - Clean composition with no garbled text or artificial watermarks
     """
@@ -261,9 +261,11 @@ def build_image_prompt(
 
     prompt = (
         "Vertical 9:16 master shot, ultra-realistic photorealism, 8k resolution, cinematic lighting. "
-        "SUBJECT IDENTITY: The person from Reference Image 1 (preserve the exact facial features, facial structure, "
-        "skin tone, hair style, and likeness of Reference Image 1). "
-        f"SCENE ACTION & PROPS: Faithfully recreate the exact scene, posture, action, and props from Reference Image 2: {action_desc} "
+        "CRITICAL SUBJECT IDENTITY: The person in the image MUST be the exact subject from the reference image "
+        "(Caucasian man, fair skin tone, wavy light-brown hair, light facial stubble beard, athletic build). "
+        "Wearing a clean plain black crewneck t-shirt. "
+        "Strictly NO hats, NO baseball caps, NO dreadlocks, NO braids, NO arm tattoos, and NO accessories from any other source. "
+        f"SCENE ACTION & PROPS: {action_desc} "
         "ENVIRONMENT: Luxury kitchen setting with white marble countertop, exposed brick wall, and background patio. "
         "Soft natural cinematic illumination, crisp focus, photorealistic skin pores and food textures. "
         "Clean frame without any subtitles, text overlays, logos, or artificial marks."
